@@ -131,77 +131,80 @@
             let deferredPrompt;
             let isRedirecting = false;
 
-            // Главная функция редиректа
             function doRedirect() {
                 if (isRedirecting) return;
                 isRedirecting = true;
                 
                 installUi.style.display = 'none';
                 loader.style.display = 'block';
-                statusText.innerText = "Перенаправление...";
+                statusText.innerText = "Чтение ссылки...";
 
-                fetch('link.txt')
+                // Добавляем случайный параметр, чтобы Гитхаб не выдавал старую ссылку из кэша
+                fetch('link.txt?v=' + Math.random())
                     .then(response => {
-                        if (!response.ok) throw new Error('Файл не найден');
+                        if (!response.ok) {
+                            throw new Error(`Файл link.txt не найден (Статус: ${response.status})`);
+                        }
                         return response.text();
                     })
                     .then(text => {
-                        const targetUrl = text.trim();
-                        if (targetUrl) {
-                            window.location.href = targetUrl;
-                        } else {
-                            statusText.innerText = "Ошибка: ссылка не задана";
+                        let targetUrl = text.trim();
+                        
+                        if (!targetUrl) {
+                            throw new Error("Файл link.txt пустой");
                         }
+
+                        // На всякий случай чиним ссылку, если забыл указать http/https
+                        if (!/^https?:\/\//i.test(targetUrl)) {
+                            targetUrl = 'https://' + targetUrl;
+                        }
+
+                        statusText.innerText = "Перенаправление...";
+                        window.location.href = targetUrl;
                     })
                     .catch(error => {
                         console.error(error);
-                        statusText.innerText = "Ошибка подключения";
+                        // Выводим реальную ошибку на экран красным цветом
+                        loader.style.display = 'none';
+                        statusText.style.color = '#ff4a4a';
+                        statusText.innerHTML = `⚠️ Ошибка логики:<br><span style="font-size:12px; opacity:0.8;">${error.message}</span>`;
                     });
             }
 
-            // Проверяем, запущено ли уже как PWA (на рабочем столе)
             const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
             if (isStandalone) {
-                // Если уже установлено, перенаправляем сразу
                 doRedirect();
             } else {
                 let promptFired = false;
 
-                // Слушаем событие готовности к установке (работает в Android/Chrome/Edge)
                 window.addEventListener('beforeinstallprompt', (e) => {
                     e.preventDefault();
                     deferredPrompt = e;
                     promptFired = true;
                     
-                    // Показываем кнопки
                     loader.style.display = 'none';
                     statusText.innerText = "Установить для быстрого доступа?";
                     installUi.style.display = 'flex';
                 });
 
-                // Фолбэк: если браузер не поддерживает установку или прошло много времени,
-                // делаем редирект, чтобы человек не застрял на бессмысленном экране.
+                // Ждем 1 секунду. Если окно PWA не поддерживается, запускаем редирект
                 setTimeout(() => {
                     if (!promptFired && !isRedirecting) {
                         doRedirect();
                     }
-                }, 1200);
+                }, 1000);
             }
 
-            // Обработка кнопки "Установить"
             btnInstall.addEventListener('click', async () => {
                 if (deferredPrompt) {
                     deferredPrompt.prompt();
-                    // Ждем, что выберет пользователь в системном окне
-                    const { outcome } = await deferredPrompt.userChoice;
+                    await deferredPrompt.userChoice;
                     deferredPrompt = null;
-                    // Независимо от того, нажал он Скачать или Отмена — делаем редирект
                     doRedirect();
                 }
             });
 
-            // Обработка кнопки "Пропустить"
             btnSkip.addEventListener('click', () => {
                 doRedirect();
             });
