@@ -18,7 +18,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <style>
-        /* Полный запрет выделения текста и синих подсветок при тапе */
         * {
             margin: 0;
             padding: 0;
@@ -54,7 +53,7 @@
             background-position: center;
         }
 
-        /* Полноэкранный плеер для видео-заставки в PWA */
+        /* Полноэкранный плеер для видео */
         #bg-video {
             position: absolute;
             top: 0;
@@ -64,10 +63,13 @@
             object-fit: cover;
             z-index: 11;
             display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
-        /* Жидкое стекло */
+        /* Стеклянная панель скрыта по дефолту, чтобы не бесить лоадером в PWA */
         .glass-panel {
+            display: none; 
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.06);
             backdrop-filter: blur(20px);
@@ -75,13 +77,37 @@
             border-radius: 24px;
             padding: 45px 35px;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-            display: flex;
             flex-direction: column;
             align-items: center;
             gap: 20px;
             width: 100%;
             max-width: 320px;
             z-index: 12;
+        }
+
+        /* Прогресс-бар для тяжелых медиафайлов */
+        .progress-box {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #b24bf3, #e0aaff);
+            transition: width 0.1s linear;
+            border-radius: 10px;
         }
 
         /* Крутилка лоадера (только для браузера) */
@@ -117,24 +143,19 @@
             display: none;
         }
 
-        .btn:active {
-            transform: scale(0.97);
-        }
+        .btn:active { transform: scale(0.97); }
 
-        /* Установить (Браузер) */
         .btn-install {
             background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             box-shadow: 0 6px 20px rgba(178, 75, 243, 0.3);
         }
 
-        /* Пропустить (Браузер) */
         .btn-skip {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: rgba(255, 255, 255, 0.9);
         }
 
-        /* Открыть ouLauncher (PWA) */
         .btn-launch {
             background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             box-shadow: 0 8px 25px rgba(178, 75, 243, 0.4);
@@ -155,39 +176,40 @@
         <video id="bg-video" playsinline muted autoplay></video>
 
         <div class="glass-panel" id="ui-panel">
-            <div class="loader" id="main-loader"></div>
-            <div class="text" id="status">Загрузка...</div>
+            <div class="loader" id="main-loader" style="display: none;"></div>
             
-            <button class="btn btn-install" id="install-button">Установить как приложение</button>
-            <button class="btn btn-skip" id="skip-button">Пропустить</button>
+            <div class="text" id="status">Загрузка модулей...</div>
+            
+            <div class="progress-box" id="progress-container" style="display: none;">
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progress-fill"></div>
+                </div>
+            </div>
+            
+            <button class="btn btn-install" id="install-button"></button>
+            <button class="btn btn-skip" id="skip-button"></button>
             <button class="btn btn-launch" id="launch-button">Открыть ouLauncher</button>
         </div>
     </div>
 
     <script>
-        // БЛОКИРОВКА ПРИБЛИЖЕНИЯ ЖЕСТАМИ НА СТРАНИЦЕ
-        document.addEventListener('touchmove', (event) => {
-            if (event.scale !== undefined && event.scale !== 1) { 
-                event.preventDefault(); 
-            }
-        }, { passive: false });
-
+        // Запреты на зум экрана тапами и жестами
+        document.addEventListener('touchmove', (e) => { if (e.scale !== undefined && e.scale !== 1) e.preventDefault(); }, { passive: false });
         let lastTouchEnd = 0;
-        document.addEventListener('touchend', (event) => {
+        document.addEventListener('touchend', (e) => {
             const now = (new Date()).getTime();
-            if (now - lastTouchEnd <= 300) {
-                event.preventDefault(); // Запрет двойного тапа для зума
-            }
+            if (now - lastTouchEnd <= 300) e.preventDefault();
             lastTouchEnd = now;
         }, false);
 
-        // ОСНОВНАЯ ЛОГИКА СТРАНИЦЫ
         document.addEventListener("DOMContentLoaded", () => {
             const container = document.getElementById('main-container');
             const uiPanel = document.getElementById('ui-panel');
             const video = document.getElementById('bg-video');
             const statusText = document.getElementById('status');
             const loader = document.getElementById('main-loader');
+            const progressContainer = document.getElementById('progress-container');
+            const progressFill = document.getElementById('progress-fill');
             
             const installBtn = document.getElementById('install-button');
             const skipBtn = document.getElementById('skip-button');
@@ -198,48 +220,99 @@
             
             const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
-            // Отлавливаем кнопку установки для обычных браузеров
+            // Ловим триггер установки для браузера
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
-                
                 if (!isPWA) {
                     loader.style.display = 'none';
+                    progressContainer.style.display = 'none';
                     statusText.innerText = "Доступна установка на рабочий стол";
+                    installBtn.innerText = "Установить как приложение";
+                    skipBtn.innerText = "Пропустить";
                     installBtn.style.display = 'block';
                     skipBtn.style.display = 'block';
+                    uiPanel.style.display = 'flex';
                 }
             });
 
-            // Получаем ссылку
+            // Функция умной предзагрузки тяжелых файлов через XHR (сохраняет в Blob)
+            function preloadFile(url, onProgress) {
+                return new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', url + '?_=' + new Date().getTime(), true);
+                    xhr.responseType = 'blob';
+                    xhr.onprogress = (e) => {
+                        if (e.lengthComputable) {
+                            onProgress(e.loaded / e.total);
+                        }
+                    };
+                    xhr.onload = () => {
+                        if (xhr.status === 200) {
+                            resolve(URL.createObjectURL(xhr.response)); // Создаем локальную ссылку на файл из памяти
+                        } else {
+                            reject();
+                        }
+                    };
+                    xhr.onerror = () => reject();
+                    xhr.send();
+                });
+            }
+
+            // Загружаем текстовый файл конфигурации
             fetch('link.txt?_=' + new Date().getTime())
-                .then(response => {
-                    if (!response.ok) throw new Error();
-                    return response.text();
-                })
+                .then(res => res.ok ? res.text() : window.location.reload())
                 .then(url => {
                     savedUrl = url.trim();
-                    if (savedUrl) {
-                        
-                        if (isPWA) {
-                            // ЛОГИКА ДЛЯ PWA
-                            uiPanel.style.display = 'none'; // Полностью прячем стекло с лоадером
-                            video.src = 'video.mp4';
-                            video.style.display = 'block';
-                            video.play().catch(() => {}); // Запуск видео глушит ошибки автоплея
+                    if (!savedUrl) {
+                        statusText.innerText = "Ошибка конфигурации ссылки";
+                        uiPanel.style.display = 'flex';
+                        return;
+                    }
 
-                            // Через 4 секунды уводим на основной сайт
+                    if (isPWA) {
+                        // ---- ЛОГИКА ДЛЯ PWA ----
+                        // Показываем стекло загрузки файлов ТОЛЬКО если их надо качать из сети
+                        statusText.innerText = "Загрузка ресурсов: 0%";
+                        progressContainer.style.display = 'block';
+                        uiPanel.style.display = 'flex';
+
+                        let videoBlob = '';
+                        let photoBlob = '';
+
+                        // Качаем сначала видео
+                        preloadFile('video.mp4', (p) => {
+                            let percent = Math.round(p * 100);
+                            statusText.innerText = `Загрузка медиа: ${percent}%`;
+                            progressFill.style.width = percent + '%';
+                        })
+                        .then(vBlob => {
+                            videoBlob = vBlob;
+                            // Затем качаем фото фона
+                            return preloadFile('photo.png', () => {});
+                        })
+                        .then(pBlob => {
+                            photoBlob = pBlob;
+                            
+                            // Файлы в памяти! Запускаем шоу
+                            uiPanel.style.display = 'none'; // Скрываем панель прогресс-бара
+                            video.src = videoBlob;
+                            video.style.display = 'block';
+                            video.style.opacity = '1';
+                            video.play().catch(() => {});
+
+                            // Ровно через 4 секунды перекидываем на целевой домен
                             setTimeout(() => {
                                 window.location.href = savedUrl;
 
-                                // На случай, если нажали крестик и вернулись:
-                                // Меняем видео на картинку, возвращаем панель, но уже с большой кнопкой
+                                // Сценарий возврата при нажатии на крестик
                                 setTimeout(() => {
                                     video.style.display = 'none';
                                     video.pause();
-                                    container.style.backgroundImage = "url('photo.png')";
+                                    container.style.backgroundImage = `url('${photoBlob}')`;
                                     
                                     loader.style.display = 'none';
+                                    progressContainer.style.display = 'none';
                                     statusText.style.display = 'none';
                                     installBtn.style.display = 'none';
                                     skipBtn.style.display = 'none';
@@ -249,53 +322,48 @@
                                 }, 1000);
 
                             }, 4000);
-
-                        } else {
-                            // ЛОГИКА ДЛЯ БРАУЗЕРА
-                            setTimeout(() => {
-                                if (!deferredPrompt) {
-                                    loader.style.display = 'none';
-                                    statusText.innerText = "Перенаправление...";
-                                    skipBtn.style.display = 'block';
-                                    setTimeout(() => { window.location.href = savedUrl; }, 1000);
-                                }
-                            }, 1500);
-                        }
+                        })
+                        .catch(() => {
+                            // Если произошел сбой сети — аварийно редиректим сразу
+                            window.location.href = savedUrl;
+                        });
 
                     } else {
-                        statusText.innerText = "Ошибка: Ссылка пуста";
-                        loader.style.display = 'none';
+                        // ---- ЛОГИКА ДЛЯ БРАУЗЕРА ----
+                        loader.style.display = 'block';
+                        uiPanel.style.display = 'flex';
+                        
+                        setTimeout(() => {
+                            if (!deferredPrompt) {
+                                loader.style.display = 'none';
+                                statusText.innerText = "Перенаправление...";
+                                skipBtn.innerText = "Открыть";
+                                skipBtn.style.display = 'block';
+                                setTimeout(() => { window.location.href = savedUrl; }, 1000);
+                            }
+                        }, 1500);
                     }
                 })
                 .catch(() => {
                     statusText.innerText = "Ошибка сети";
                     loader.style.display = 'none';
+                    uiPanel.style.display = 'flex';
                 });
 
-            // Клик "Установить" (Браузер)
+            // Клики по кнопкам управления
             installBtn.addEventListener('click', async () => {
                 if (!deferredPrompt) return;
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
                 if (outcome === 'accepted') {
-                    installBtn.style.display = 'none';
-                    skipBtn.style.display = 'none';
-                    loader.style.display = 'block';
-                    statusText.innerText = "Запуск приложения...";
+                    uiPanel.style.display = 'none';
                     window.location.href = savedUrl;
                 }
                 deferredPrompt = null;
             });
 
-            // Клик "Пропустить" (Браузер)
-            skipBtn.addEventListener('click', () => {
-                if (savedUrl) window.location.href = savedUrl;
-            });
-
-            // Клик "Открыть ouLauncher" (PWA после возврата)
-            launchBtn.addEventListener('click', () => {
-                if (savedUrl) window.location.href = savedUrl;
-            });
+            skipBtn.addEventListener('click', () => { if (savedUrl) window.location.href = savedUrl; });
+            launchBtn.addEventListener('click', () => { if (savedUrl) window.location.href = savedUrl; });
         });
     </script>
 
