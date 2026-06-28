@@ -5,19 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>ouLauncher</title>
     
+    <!-- Полный запрет кэширования страницы -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     
+    <!-- Иконки и манифест -->
     <link rel="icon" type="image/png" sizes="512x512" href="512.png">
     <link rel="apple-touch-icon" href="1024.png">
     <link rel="manifest" href="manifest.json">
     
+    <!-- Настройки PWA -->
     <meta name="theme-color" content="#0d0015">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <style>
+        /* Жесткий запрет выделения и зума */
         * {
             margin: 0;
             padding: 0;
@@ -53,7 +57,7 @@
             background-position: center;
         }
 
-        /* Полноэкранный плеер для видео */
+        /* Полноэкранный плеер для видео-заставки в PWA */
         #bg-video {
             position: absolute;
             top: 0;
@@ -67,7 +71,7 @@
             transition: opacity 0.3s ease;
         }
 
-        /* Стеклянная панель скрыта по дефолту, чтобы не бесить лоадером в PWA */
+        /* Панель скрыта по дефолту, чтобы не моргать лоадером в PWA */
         .glass-panel {
             display: none; 
             background: rgba(255, 255, 255, 0.03);
@@ -85,32 +89,6 @@
             z-index: 12;
         }
 
-        /* Прогресс-бар для тяжелых медиафайлов */
-        .progress-box {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .progress-bar-bg {
-            width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .progress-bar-fill {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #b24bf3, #e0aaff);
-            transition: width 0.1s linear;
-            border-radius: 10px;
-        }
-
-        /* Крутилка лоадера (только для браузера) */
         .loader {
             width: 55px;
             height: 55px;
@@ -127,7 +105,6 @@
             text-align: center;
         }
 
-        /* Кнопки */
         .btn {
             width: 100%;
             border: none;
@@ -173,18 +150,12 @@
 <body>
 
     <div class="container" id="main-container">
+        <!-- Видео строго приглушено (muted) для обхода запретов автоплея -->
         <video id="bg-video" playsinline muted autoplay></video>
 
         <div class="glass-panel" id="ui-panel">
             <div class="loader" id="main-loader" style="display: none;"></div>
-            
-            <div class="text" id="status">Загрузка модулей...</div>
-            
-            <div class="progress-box" id="progress-container" style="display: none;">
-                <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" id="progress-fill"></div>
-                </div>
-            </div>
+            <div class="text" id="status">Загрузка...</div>
             
             <button class="btn btn-install" id="install-button"></button>
             <button class="btn btn-skip" id="skip-button"></button>
@@ -193,7 +164,7 @@
     </div>
 
     <script>
-        // Запреты на зум экрана тапами и жестами
+        // Блокировка pinch-to-zoom и двойных тапов
         document.addEventListener('touchmove', (e) => { if (e.scale !== undefined && e.scale !== 1) e.preventDefault(); }, { passive: false });
         let lastTouchEnd = 0;
         document.addEventListener('touchend', (e) => {
@@ -208,8 +179,6 @@
             const video = document.getElementById('bg-video');
             const statusText = document.getElementById('status');
             const loader = document.getElementById('main-loader');
-            const progressContainer = document.getElementById('progress-container');
-            const progressFill = document.getElementById('progress-fill');
             
             const installBtn = document.getElementById('install-button');
             const skipBtn = document.getElementById('skip-button');
@@ -220,13 +189,12 @@
             
             const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
-            // Ловим триггер установки для браузера
+            // Логика кнопки установки в обычном браузере
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
                 if (!isPWA) {
                     loader.style.display = 'none';
-                    progressContainer.style.display = 'none';
                     statusText.innerText = "Доступна установка на рабочий стол";
                     installBtn.innerText = "Установить как приложение";
                     skipBtn.innerText = "Пропустить";
@@ -236,100 +204,43 @@
                 }
             });
 
-            // Функция умной предзагрузки тяжелых файлов через XHR (сохраняет в Blob)
-            function preloadFile(url, onProgress) {
-                return new Promise((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('GET', url + '?_=' + new Date().getTime(), true);
-                    xhr.responseType = 'blob';
-                    xhr.onprogress = (e) => {
-                        if (e.lengthComputable) {
-                            onProgress(e.loaded / e.total);
-                        }
-                    };
-                    xhr.onload = () => {
-                        if (xhr.status === 200) {
-                            resolve(URL.createObjectURL(xhr.response)); // Создаем локальную ссылку на файл из памяти
-                        } else {
-                            reject();
-                        }
-                    };
-                    xhr.onerror = () => reject();
-                    xhr.send();
-                });
-            }
-
-            // Загружаем текстовый файл конфигурации
+            // Подгружаем ссылку
             fetch('link.txt?_=' + new Date().getTime())
                 .then(res => res.ok ? res.text() : window.location.reload())
                 .then(url => {
                     savedUrl = url.trim();
-                    if (!savedUrl) {
-                        statusText.innerText = "Ошибка конфигурации ссылки";
-                        uiPanel.style.display = 'flex';
-                        return;
-                    }
+                    if (!savedUrl) return;
 
                     if (isPWA) {
-                        // ---- ЛОГИКА ДЛЯ PWA ----
-                        // Показываем стекло загрузки файлов ТОЛЬКО если их надо качать из сети
-                        statusText.innerText = "Загрузка ресурсов: 0%";
-                        progressContainer.style.display = 'block';
-                        uiPanel.style.display = 'flex';
+                        // ---- РЕЖИМ ПВА ----
+                        // Сразу запускаем видео без звука на весь экран
+                        video.src = 'video.mp4';
+                        video.style.display = 'block';
+                        video.style.opacity = '1';
+                        video.play().catch(() => {});
 
-                        let videoBlob = '';
-                        let photoBlob = '';
-
-                        // Качаем сначала видео
-                        preloadFile('video.mp4', (p) => {
-                            let percent = Math.round(p * 100);
-                            statusText.innerText = `Загрузка медиа: ${percent}%`;
-                            progressFill.style.width = percent + '%';
-                        })
-                        .then(vBlob => {
-                            videoBlob = vBlob;
-                            // Затем качаем фото фона
-                            return preloadFile('photo.png', () => {});
-                        })
-                        .then(pBlob => {
-                            photoBlob = pBlob;
-                            
-                            // Файлы в памяти! Запускаем шоу
-                            uiPanel.style.display = 'none'; // Скрываем панель прогресс-бара
-                            video.src = videoBlob;
-                            video.style.display = 'block';
-                            video.style.opacity = '1';
-                            video.play().catch(() => {});
-
-                            // Ровно через 4 секунды перекидываем на целевой домен
-                            setTimeout(() => {
-                                window.location.href = savedUrl;
-
-                                // Сценарий возврата при нажатии на крестик
-                                setTimeout(() => {
-                                    video.style.display = 'none';
-                                    video.pause();
-                                    container.style.backgroundImage = `url('${photoBlob}')`;
-                                    
-                                    loader.style.display = 'none';
-                                    progressContainer.style.display = 'none';
-                                    statusText.style.display = 'none';
-                                    installBtn.style.display = 'none';
-                                    skipBtn.style.display = 'none';
-                                    
-                                    launchBtn.style.display = 'block';
-                                    uiPanel.style.display = 'flex';
-                                }, 1000);
-
-                            }, 4000);
-                        })
-                        .catch(() => {
-                            // Если произошел сбой сети — аварийно редиректим сразу
+                        // Ровно через 4 секунды кидаем редирект
+                        setTimeout(() => {
                             window.location.href = savedUrl;
-                        });
+
+                            // Если юзер вернулся обратно через крестик:
+                            setTimeout(() => {
+                                video.style.display = 'none';
+                                video.pause();
+                                container.style.backgroundImage = "url('photo.png')";
+                                
+                                loader.style.display = 'none';
+                                statusText.style.display = 'none';
+                                installBtn.style.display = 'none';
+                                skipBtn.style.display = 'none';
+                                
+                                launchBtn.style.display = 'block';
+                                uiPanel.style.display = 'flex';
+                            }, 1000);
+                        }, 4000);
 
                     } else {
-                        // ---- ЛОГИКА ДЛЯ БРАУЗЕРА ----
+                        // ---- РЕЖИМ БРАУЗЕРА ----
                         loader.style.display = 'block';
                         uiPanel.style.display = 'flex';
                         
@@ -343,14 +254,8 @@
                             }
                         }, 1500);
                     }
-                })
-                .catch(() => {
-                    statusText.innerText = "Ошибка сети";
-                    loader.style.display = 'none';
-                    uiPanel.style.display = 'flex';
                 });
 
-            // Клики по кнопкам управления
             installBtn.addEventListener('click', async () => {
                 if (!deferredPrompt) return;
                 deferredPrompt.prompt();
@@ -366,6 +271,5 @@
             launchBtn.addEventListener('click', () => { if (savedUrl) window.location.href = savedUrl; });
         });
     </script>
-
 </body>
 </html>
