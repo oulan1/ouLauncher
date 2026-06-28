@@ -18,11 +18,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <style>
+        /* Полный запрет выделения текста и синих подсветок при тапе */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
 
         html, body {
@@ -45,9 +50,23 @@
             background: linear-gradient(135deg, #0d0015 0%, #2a0042 100%);
             z-index: 10;
             padding: 20px;
+            background-size: cover;
+            background-position: center;
         }
 
-        /* Жидкое стекло (Glassmorphism) */
+        /* Полноэкранный плеер для видео-заставки в PWA */
+        #bg-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 11;
+            display: none;
+        }
+
+        /* Жидкое стекло */
         .glass-panel {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.06);
@@ -62,9 +81,10 @@
             gap: 20px;
             width: 100%;
             max-width: 320px;
+            z-index: 12;
         }
 
-        /* Анимация кружка загрузки */
+        /* Крутилка лоадера (только для браузера) */
         .loader {
             width: 55px;
             height: 55px;
@@ -81,7 +101,7 @@
             text-align: center;
         }
 
-        /* Кнопки управления */
+        /* Кнопки */
         .btn {
             width: 100%;
             border: none;
@@ -94,27 +114,27 @@
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             text-align: center;
             text-decoration: none;
-            display: none; /* Скрыты по дефолту, включаются скриптом */
+            display: none;
         }
 
         .btn:active {
             transform: scale(0.97);
         }
 
-        /* Фиолетовая кнопка установки PWA */
+        /* Установить (Браузер) */
         .btn-install {
             background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             box-shadow: 0 6px 20px rgba(178, 75, 243, 0.3);
         }
 
-        /* Стеклянная кнопка Пропустить */
+        /* Пропустить (Браузер) */
         .btn-skip {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: rgba(255, 255, 255, 0.9);
         }
 
-        /* Кнопка ручного открытия сайта в PWA после закрытия крестиком */
+        /* Открыть ouLauncher (PWA) */
         .btn-launch {
             background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             box-shadow: 0 8px 25px rgba(178, 75, 243, 0.4);
@@ -131,22 +151,44 @@
 </head>
 <body>
 
-    <div class="container">
-        <div class="glass-panel">
+    <div class="container" id="main-container">
+        <video id="bg-video" playsinline muted autoplay></video>
+
+        <div class="glass-panel" id="ui-panel">
             <div class="loader" id="main-loader"></div>
             <div class="text" id="status">Загрузка...</div>
             
             <button class="btn btn-install" id="install-button">Установить как приложение</button>
             <button class="btn btn-skip" id="skip-button">Пропустить</button>
-            
             <button class="btn btn-launch" id="launch-button">Открыть ouLauncher</button>
         </div>
     </div>
 
     <script>
+        // БЛОКИРОВКА ПРИБЛИЖЕНИЯ ЖЕСТАМИ НА СТРАНИЦЕ
+        document.addEventListener('touchmove', (event) => {
+            if (event.scale !== undefined && event.scale !== 1) { 
+                event.preventDefault(); 
+            }
+        }, { passive: false });
+
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (event) => {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault(); // Запрет двойного тапа для зума
+            }
+            lastTouchEnd = now;
+        }, false);
+
+        // ОСНОВНАЯ ЛОГИКА СТРАНИЦЫ
         document.addEventListener("DOMContentLoaded", () => {
+            const container = document.getElementById('main-container');
+            const uiPanel = document.getElementById('ui-panel');
+            const video = document.getElementById('bg-video');
             const statusText = document.getElementById('status');
             const loader = document.getElementById('main-loader');
+            
             const installBtn = document.getElementById('install-button');
             const skipBtn = document.getElementById('skip-button');
             const launchBtn = document.getElementById('launch-button');
@@ -154,15 +196,13 @@
             let deferredPrompt;
             let savedUrl = '';
             
-            // Жесткая проверка режима запуска: true, если открыто в PWA (standalone)
             const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
-            // Ловим системное событие готовности к установке
+            // Отлавливаем кнопку установки для обычных браузеров
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
                 
-                // Если зашли с обычного браузера, тормозим лоадер и выводим блок кнопок установки
                 if (!isPWA) {
                     loader.style.display = 'none';
                     statusText.innerText = "Доступна установка на рабочий стол";
@@ -171,7 +211,7 @@
                 }
             });
 
-            // Чтение файла ссылки БЕЗ ИСПОЛЬЗОВАНИЯ КЭША (добавляем уникальный timestamp)
+            // Получаем ссылку
             fetch('link.txt?_=' + new Date().getTime())
                 .then(response => {
                     if (!response.ok) throw new Error();
@@ -182,29 +222,42 @@
                     if (savedUrl) {
                         
                         if (isPWA) {
-                            // ЛОГИКА ДЛЯ PWA: Сразу перенаправляем на основной домен
-                            statusText.innerText = "Запуск ouLauncher...";
-                            window.location.href = savedUrl;
+                            // ЛОГИКА ДЛЯ PWA
+                            uiPanel.style.display = 'none'; // Полностью прячем стекло с лоадером
+                            video.src = 'video.mp4';
+                            video.style.display = 'block';
+                            video.play().catch(() => {}); // Запуск видео глушит ошибки автоплея
 
-                            // Если редирект прошел, но пользователь закрыл вкладку крестиком и вернулся — выкатываем большую кнопку
+                            // Через 4 секунды уводим на основной сайт
                             setTimeout(() => {
-                                loader.style.display = 'none';
-                                statusText.style.display = 'none';
-                                launchBtn.style.display = 'block';
-                            }, 1200);
+                                window.location.href = savedUrl;
+
+                                // На случай, если нажали крестик и вернулись:
+                                // Меняем видео на картинку, возвращаем панель, но уже с большой кнопкой
+                                setTimeout(() => {
+                                    video.style.display = 'none';
+                                    video.pause();
+                                    container.style.backgroundImage = "url('photo.png')";
+                                    
+                                    loader.style.display = 'none';
+                                    statusText.style.display = 'none';
+                                    installBtn.style.display = 'none';
+                                    skipBtn.style.display = 'none';
+                                    
+                                    launchBtn.style.display = 'block';
+                                    uiPanel.style.display = 'flex';
+                                }, 1000);
+
+                            }, 4000);
 
                         } else {
-                            // ЛОГИКА ДЛЯ БРАУЗЕРА: Ждем 1.5 сек на обработку события установки. Если глухо — выводим кнопку «Пропустить»
+                            // ЛОГИКА ДЛЯ БРАУЗЕРА
                             setTimeout(() => {
                                 if (!deferredPrompt) {
                                     loader.style.display = 'none';
                                     statusText.innerText = "Перенаправление...";
                                     skipBtn.style.display = 'block';
-                                    
-                                    // Авто-улет через секунду, если пользователь бездействует в браузере
-                                    setTimeout(() => {
-                                        window.location.href = savedUrl;
-                                    }, 1000);
+                                    setTimeout(() => { window.location.href = savedUrl; }, 1000);
                                 }
                             }, 1500);
                         }
@@ -215,11 +268,11 @@
                     }
                 })
                 .catch(() => {
-                    statusText.innerText = "Ошибка сети при загрузке ссылки";
+                    statusText.innerText = "Ошибка сети";
                     loader.style.display = 'none';
                 });
 
-            // Нажатие на кнопку "Установить" (в обычном браузере)
+            // Клик "Установить" (Браузер)
             installBtn.addEventListener('click', async () => {
                 if (!deferredPrompt) return;
                 deferredPrompt.prompt();
@@ -234,12 +287,12 @@
                 deferredPrompt = null;
             });
 
-            // Нажатие на кнопку "Пропустить" (в обычном браузере)
+            // Клик "Пропустить" (Браузер)
             skipBtn.addEventListener('click', () => {
                 if (savedUrl) window.location.href = savedUrl;
             });
 
-            // Нажатие на большую кнопку "Открыть ouLauncher" (внутри PWA после сброса редиректа)
+            // Клик "Открыть ouLauncher" (PWA после возврата)
             launchBtn.addEventListener('click', () => {
                 if (savedUrl) window.location.href = savedUrl;
             });
