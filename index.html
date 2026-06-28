@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ouLauncher</title>
+    <title>Перенаправление...</title>
     
     <link rel="icon" type="image/png" sizes="512x512" href="512.png">
     <link rel="apple-touch-icon" href="1024.png">
@@ -43,7 +43,7 @@
             padding: 20px;
         }
 
-        /* Эффект жидкого стекла (Glassmorphism) */
+        /* Жидкое стекло */
         .glass-panel {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.06);
@@ -60,7 +60,7 @@
             max-width: 320px;
         }
 
-        /* Кружок загрузки */
+        /* Крутилка */
         .loader {
             width: 55px;
             height: 55px;
@@ -77,28 +77,46 @@
             text-align: center;
         }
 
-        /* Большая кнопка ouLauncher по центру */
-        .launch-btn {
-            display: none; /* Появляется после того, как редирект отработал */
+        /* Общие стили кнопок */
+        .btn {
             width: 100%;
-            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             border: none;
             color: #ffffff;
-            padding: 16px 24px;
-            border-radius: 16px;
+            padding: 15px 20px;
+            border-radius: 15px;
             cursor: pointer;
-            font-size: 16px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
+            font-size: 15px;
+            font-weight: 600;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
-            box-shadow: 0 8px 25px rgba(178, 75, 243, 0.3);
             text-align: center;
             text-decoration: none;
+            display: none; /* Все кнопки скрыты по дефолту, логика включит нужные */
         }
 
-        .launch-btn:active {
+        .btn:active {
             transform: scale(0.97);
-            box-shadow: 0 4px 15px rgba(178, 75, 243, 0.2);
+        }
+
+        /* Кнопка Установить PWA */
+        .btn-install {
+            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
+            box-shadow: 0 6px 20px rgba(178, 75, 243, 0.3);
+        }
+
+        /* Кнопка Пропустить (в браузере) */
+        .btn-skip {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Главная кнопка ouLauncher (когда закрыли крестик в PWA) */
+        .btn-launch {
+            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
+            box-shadow: 0 8px 25px rgba(178, 75, 243, 0.4);
+            font-size: 16px;
+            font-weight: 700;
+            padding: 16px 24px;
         }
 
         @keyframes spin {
@@ -112,9 +130,12 @@
     <div class="container">
         <div class="glass-panel">
             <div class="loader" id="main-loader"></div>
-            <div class="text" id="status">Запуск ouLauncher...</div>
+            <div class="text" id="status">Загрузка...</div>
             
-            <button class="launch-btn" id="launch-button">Открыть ouLauncher</button>
+            <button class="btn btn-install" id="install-button">Установить как приложение</button>
+            <button class="btn btn-skip" id="skip-button">Пропустить</button>
+            
+            <button class="btn btn-launch" id="launch-button">Открыть ouLauncher</button>
         </div>
     </div>
 
@@ -122,11 +143,31 @@
         document.addEventListener("DOMContentLoaded", () => {
             const statusText = document.getElementById('status');
             const loader = document.getElementById('main-loader');
+            const installBtn = document.getElementById('install-button');
+            const skipBtn = document.getElementById('skip-button');
             const launchBtn = document.getElementById('launch-button');
             
+            let deferredPrompt;
             let savedUrl = '';
+            
+            // Жесткая проверка: открыто ли как установленное PWA
+            const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
-            // Читаем ссылку из link.txt
+            // Хэндлер системного предложения установки PWA
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                
+                // Если мы НЕ в PWA, показываем кнопку установки
+                if (!isPWA) {
+                    loader.style.display = 'none';
+                    statusText.innerText = "Доступна установка на рабочий стол";
+                    installBtn.style.display = 'block';
+                    skipBtn.style.display = 'block';
+                }
+            });
+
+            // Читаем ссылку из файла
             fetch('link.txt')
                 .then(response => {
                     if (!response.ok) throw new Error();
@@ -135,45 +176,68 @@
                 .then(url => {
                     savedUrl = url.trim();
                     if (savedUrl) {
-                        // Сразу же перенаправляем пользователя
-                        window.location.href = savedUrl;
+                        
+                        if (isPWA) {
+                            // ЛОГИКА ДЛЯ PWA: Сразу перенаправляем без лишних вопросов
+                            statusText.innerText = "Запуск ouLauncher...";
+                            window.location.href = savedUrl;
 
-                        // Спустя мгновение убираем крутилку загрузки и вешаем кнопку.
-                        // Если пользователь вернется сюда (нажмет крестик в PWA), он увидит кнопку.
-                        setTimeout(() => {
-                            loader.style.display = 'none';
-                            statusText.style.display = 'none';
-                            launchBtn.style.display = 'block';
-                        }, 1000);
+                            // На случай если нажмут крестик и вернутся обратно на эту страницу
+                            setTimeout(() => {
+                                loader.style.display = 'none';
+                                statusText.style.display = 'none';
+                                launchBtn.style.display = 'block';
+                            }, 1200);
+
+                        } else {
+                            // ЛОГИКА ДЛЯ БРАУЗЕРА: Даем 1.5 сек поймать событие установки. Если тишина — выкатываем кнопку пропустить
+                            setTimeout(() => {
+                                if (!deferredPrompt) {
+                                    loader.style.display = 'none';
+                                    statusText.innerText = "Перенаправление...";
+                                    skipBtn.style.display = 'block';
+                                    
+                                    // Автоматический улет, если юзер в браузере затупил
+                                    setTimeout(() => {
+                                        window.location.href = savedUrl;
+                                    }, 1000);
+                                }
+                            }, 1500);
+                        }
 
                     } else {
-                        statusText.innerText = "Ошибка: Файл ссылки пуст";
+                        statusText.innerText = "Ошибка: Ссылка пуста";
                         loader.style.display = 'none';
                     }
                 })
                 .catch(() => {
-                    statusText.innerText = "Ошибка загрузки конфигурации";
+                    statusText.innerText = "Ошибка сети при получении ссылки";
                     loader.style.display = 'none';
-                    // Даже при ошибке сети даем возможность тыкнуть кнопку, если ссылка закешировалась ранее
-                    if (savedUrl) {
-                        loader.style.display = 'none';
-                        statusText.style.display = 'none';
-                        launchBtn.style.display = 'block';
-                    }
                 });
 
-            // Клик по большой кнопке ouLauncher
-            launchBtn.addEventListener('click', () => {
-                if (savedUrl) {
+            // Клик по кнопке "Установить" (в браузере)
+            installBtn.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    installBtn.style.display = 'none';
+                    skipBtn.style.display = 'none';
+                    loader.style.display = 'block';
+                    statusText.innerText = "Установка принята. Переходим...";
                     window.location.href = savedUrl;
-                } else {
-                    // Перестраховка: если вдруг скрипт потерял ссылку, пробуем прочитать файл заново
-                    fetch('link.txt')
-                        .then(res => res.text())
-                        .then(url => {
-                            window.location.href = url.trim();
-                        });
                 }
+                deferredPrompt = null;
+            });
+
+            // Клик по кнопке "Пропустить" (в браузере)
+            skipBtn.addEventListener('click', () => {
+                if (savedUrl) window.location.href = savedUrl;
+            });
+
+            // Клик по большой кнопке "Открыть ouLauncher" (внутри PWA после закрытия крестиком)
+            launchBtn.addEventListener('click', () => {
+                if (savedUrl) window.location.href = savedUrl;
             });
         });
     </script>
