@@ -1,0 +1,22 @@
+{
+  "name": "ouLauncher",
+  "short_name": "ouLauncher",
+  "description": "ouLauncher - твой лучший лаунчер для игр",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0d0015",
+  "theme_color": "#1a0029",
+  "icons": [
+    {
+      "src": "512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
