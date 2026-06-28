@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ouLauncher</title>
+    
+    <link rel="icon" type="image/png" sizes="512x512" href="512.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a0029">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0d0015 0%, #2a0042 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            color: white;
+        }
+
+        /* Элемент жидкого стекла */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 28px;
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 20px;
+            width: 90%;
+            max-width: 340px;
+            transition: all 0.3s ease;
+        }
+
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #b24bf3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .text {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 15px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Интерфейс установки (скрыт по умолчанию) */
+        .install-ui {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 14px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .btn-install {
+            background: rgba(178, 75, 243, 0.8);
+            color: white;
+            box-shadow: 0 4px 15px rgba(178, 75, 243, 0.3);
+        }
+
+        .btn-install:hover {
+            background: rgba(178, 75, 243, 1);
+        }
+
+        .btn-skip {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-skip:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glass-panel">
+        <div class="loader" id="loader"></div>
+        <div class="text" id="status">Проверка...</div>
+        
+        <div class="install-ui" id="install-ui">
+            <button class="btn-install" id="btn-install">Установить приложение</button>
+            <button class="btn-skip" id="btn-skip">Пропустить</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const statusText = document.getElementById('status');
+            const loader = document.getElementById('loader');
+            const installUi = document.getElementById('install-ui');
+            const btnInstall = document.getElementById('btn-install');
+            const btnSkip = document.getElementById('btn-skip');
+            
+            let deferredPrompt;
+            let isRedirecting = false;
+
+            // Главная функция редиректа
+            function doRedirect() {
+                if (isRedirecting) return;
+                isRedirecting = true;
+                
+                installUi.style.display = 'none';
+                loader.style.display = 'block';
+                statusText.innerText = "Перенаправление...";
+
+                fetch('link.txt')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Файл не найден');
+                        return response.text();
+                    })
+                    .then(text => {
+                        const targetUrl = text.trim();
+                        if (targetUrl) {
+                            window.location.href = targetUrl;
+                        } else {
+                            statusText.innerText = "Ошибка: ссылка не задана";
+                        }
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        statusText.innerText = "Ошибка подключения";
+                    });
+            }
+
+            // Проверяем, запущено ли уже как PWA (на рабочем столе)
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+            if (isStandalone) {
+                // Если уже установлено, перенаправляем сразу
+                doRedirect();
+            } else {
+                let promptFired = false;
+
+                // Слушаем событие готовности к установке (работает в Android/Chrome/Edge)
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    deferredPrompt = e;
+                    promptFired = true;
+                    
+                    // Показываем кнопки
+                    loader.style.display = 'none';
+                    statusText.innerText = "Установить для быстрого доступа?";
+                    installUi.style.display = 'flex';
+                });
+
+                // Фолбэк: если браузер не поддерживает установку или прошло много времени,
+                // делаем редирект, чтобы человек не застрял на бессмысленном экране.
+                setTimeout(() => {
+                    if (!promptFired && !isRedirecting) {
+                        doRedirect();
+                    }
+                }, 1200);
+            }
+
+            // Обработка кнопки "Установить"
+            btnInstall.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    // Ждем, что выберет пользователь в системном окне
+                    const { outcome } = await deferredPrompt.userChoice;
+                    deferredPrompt = null;
+                    // Независимо от того, нажал он Скачать или Отмена — делаем редирект
+                    doRedirect();
+                }
+            });
+
+            // Обработка кнопки "Пропустить"
+            btnSkip.addEventListener('click', () => {
+                doRedirect();
+            });
+        });
+    </script>
+
+</body>
+</html>
