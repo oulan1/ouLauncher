@@ -29,7 +29,7 @@
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
-        .loader-container {
+        .container {
             position: fixed;
             top: 0;
             left: 0;
@@ -43,14 +43,14 @@
             padding: 20px;
         }
 
-        /* Эффект жидкого стекла */
+        /* Эффект жидкого стекла (Glassmorphism) */
         .glass-panel {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.06);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border-radius: 24px;
-            padding: 40px 30px;
+            padding: 45px 35px;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
             display: flex;
             flex-direction: column;
@@ -60,6 +60,7 @@
             max-width: 320px;
         }
 
+        /* Кружок загрузки */
         .loader {
             width: 55px;
             height: 55px;
@@ -74,44 +75,30 @@
             font-size: 14px;
             letter-spacing: 0.5px;
             text-align: center;
-            margin-bottom: 5px;
         }
 
-        /* Кнопки */
-        .btn {
+        /* Большая кнопка ouLauncher по центру */
+        .launch-btn {
+            display: none; /* Появляется после того, как редирект отработал */
             width: 100%;
+            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             border: none;
             color: #ffffff;
-            padding: 14px 20px;
-            border-radius: 14px;
+            padding: 16px 24px;
+            border-radius: 16px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: transform 0.2s ease, opacity 0.2s ease;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 8px 25px rgba(178, 75, 243, 0.3);
             text-align: center;
             text-decoration: none;
         }
 
-        .btn:active {
-            transform: scale(0.98);
-        }
-
-        /* Фиолетовая кнопка установки */
-        .btn-install {
-            display: none; /* Включается через JS, если поддерживается браузером */
-            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
-            box-shadow: 0 6px 20px rgba(178, 75, 243, 0.3);
-        }
-
-        /* Стеклянная кнопка "Пропустить" */
-        .btn-skip {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.9);
-        }
-
-        .btn-skip:hover {
-            background: rgba(255, 255, 255, 0.1);
+        .launch-btn:active {
+            transform: scale(0.97);
+            box-shadow: 0 4px 15px rgba(178, 75, 243, 0.2);
         }
 
         @keyframes spin {
@@ -122,28 +109,24 @@
 </head>
 <body>
 
-    <div class="loader-container">
+    <div class="container">
         <div class="glass-panel">
             <div class="loader" id="main-loader"></div>
-            <div class="text" id="status">Получение ссылки...</div>
+            <div class="text" id="status">Запуск ouLauncher...</div>
             
-            <button class="btn btn-install" id="install-button">Установить как приложение</button>
-            
-            <button class="btn btn-skip" id="skip-button" style="display: none;">Перейти на сайт</button>
+            <button class="launch-btn" id="launch-button">Открыть ouLauncher</button>
         </div>
     </div>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const statusText = document.getElementById('status');
-            const installBtn = document.getElementById('install-button');
-            const skipBtn = document.getElementById('skip-button');
             const loader = document.getElementById('main-loader');
+            const launchBtn = document.getElementById('launch-button');
             
-            let deferredPrompt;
             let savedUrl = '';
 
-            // 1. Сразу запрашиваем ссылку из link.txt
+            // Читаем ссылку из link.txt
             fetch('link.txt')
                 .then(response => {
                     if (!response.ok) throw new Error();
@@ -152,48 +135,44 @@
                 .then(url => {
                     savedUrl = url.trim();
                     if (savedUrl) {
-                        statusText.innerText = "Ссылка готова";
-                        skipBtn.style.display = 'block'; // Показываем кнопку "Пропустить"
-                        
-                        // Автоматический редирект через 1.5 секунды, если пользователь никуда не нажал
+                        // Сразу же перенаправляем пользователя
+                        window.location.href = savedUrl;
+
+                        // Спустя мгновение убираем крутилку загрузки и вешаем кнопку.
+                        // Если пользователь вернется сюда (нажмет крестик в PWA), он увидит кнопку.
                         setTimeout(() => {
-                            if (!deferredPrompt) {
-                                window.location.href = savedUrl;
-                            }
-                        }, 1500);
+                            loader.style.display = 'none';
+                            statusText.style.display = 'none';
+                            launchBtn.style.display = 'block';
+                        }, 1000);
+
                     } else {
-                        statusText.innerText = "Ошибка: Файл конфигурации пуст";
+                        statusText.innerText = "Ошибка: Файл ссылки пуст";
                         loader.style.display = 'none';
                     }
                 })
                 .catch(() => {
-                    statusText.innerText = "Ошибка сети";
+                    statusText.innerText = "Ошибка загрузки конфигурации";
                     loader.style.display = 'none';
+                    // Даже при ошибке сети даем возможность тыкнуть кнопку, если ссылка закешировалась ранее
+                    if (savedUrl) {
+                        loader.style.display = 'none';
+                        statusText.style.display = 'none';
+                        launchBtn.style.display = 'block';
+                    }
                 });
 
-            // 2. Ловим событие установки (работает в Chrome на Android/ПК)
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-                installBtn.style.display = 'block';
-                statusText.innerText = "Доступно для установки";
-            });
-
-            // Клик по кнопке установки
-            installBtn.addEventListener('click', async () => {
-                if (!deferredPrompt) return;
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    installBtn.style.display = 'none';
-                }
-                deferredPrompt = null;
-            });
-
-            // Клик по кнопке "Пропустить / Перейти"
-            skipBtn.addEventListener('click', () => {
+            // Клик по большой кнопке ouLauncher
+            launchBtn.addEventListener('click', () => {
                 if (savedUrl) {
                     window.location.href = savedUrl;
+                } else {
+                    // Перестраховка: если вдруг скрипт потерял ссылку, пробуем прочитать файл заново
+                    fetch('link.txt')
+                        .then(res => res.text())
+                        .then(url => {
+                            window.location.href = url.trim();
+                        });
                 }
             });
         });
