@@ -5,19 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>ouLauncher</title>
     
-    <!-- Иконки и манифест -->
     <link rel="icon" type="image/png" sizes="512x512" href="512.png">
     <link rel="apple-touch-icon" href="1024.png">
     <link rel="manifest" href="manifest.json">
     
-    <!-- Настройки цвета панелей для Android и iOS -->
     <meta name="theme-color" content="#0d0015">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Название">
 
     <style>
-        /* Сброс стилей и фиксация экрана */
         * {
             margin: 0;
             padding: 0;
@@ -30,22 +26,9 @@
             height: 100%;
             overflow: hidden;
             background-color: #0d0015;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
-        /* Полноэкранный фрейм под основной сайт */
-        #main-app {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: none;
-            z-index: 1;
-        }
-
-        /* Задний фон и стеклянная панель загрузки */
         .loader-container {
             position: fixed;
             top: 0;
@@ -57,29 +40,26 @@
             align-items: center;
             background: linear-gradient(135deg, #0d0015 0%, #2a0042 100%);
             z-index: 10;
-            transition: opacity 0.5s ease, transform 0.5s ease;
             padding: 20px;
         }
 
-        /* Эффект жидкого стекла (Glassmorphism) */
+        /* Эффект жидкого стекла */
         .glass-panel {
             background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border-radius: 28px;
-            padding: 45px 40px;
+            border-radius: 24px;
+            padding: 40px 30px;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 25px;
+            gap: 20px;
             width: 100%;
             max-width: 320px;
-            text-align: center;
         }
 
-        /* Анимация кружка загрузки */
         .loader {
             width: 55px;
             height: 55px;
@@ -89,34 +69,49 @@
             animation: spin 1s linear infinite;
         }
 
-        /* Текст состояния */
         .text {
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 15px;
-            font-weight: 500;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
             letter-spacing: 0.5px;
-            line-height: 1.4;
+            text-align: center;
+            margin-bottom: 5px;
         }
 
-        /* Кнопка установки приложения */
-        .install-btn {
-            display: none;
+        /* Кнопки */
+        .btn {
             width: 100%;
-            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
             border: none;
             color: #ffffff;
             padding: 14px 20px;
             border-radius: 14px;
             cursor: pointer;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            box-shadow: 0 6px 20px rgba(178, 75, 243, 0.3);
-            margin-top: 5px;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+            text-align: center;
+            text-decoration: none;
         }
 
-        .install-btn:active {
+        .btn:active {
             transform: scale(0.98);
+        }
+
+        /* Фиолетовая кнопка установки */
+        .btn-install {
+            display: none; /* Включается через JS, если поддерживается браузером */
+            background: linear-gradient(135deg, #b24bf3 0%, #7b2cb7 100%);
+            box-shadow: 0 6px 20px rgba(178, 75, 243, 0.3);
+        }
+
+        /* Стеклянная кнопка "Пропустить" */
+        .btn-skip {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .btn-skip:hover {
+            background: rgba(255, 255, 255, 0.1);
         }
 
         @keyframes spin {
@@ -127,118 +122,80 @@
 </head>
 <body>
 
-    <!-- Экранирование загрузки -->
-    <div class="loader-container" id="loader-screen">
+    <div class="loader-container">
         <div class="glass-panel">
             <div class="loader" id="main-loader"></div>
-            <div class="text" id="status">Инициализация...</div>
-            <button class="install-btn" id="install-button">Установить как приложение</button>
+            <div class="text" id="status">Получение ссылки...</div>
+            
+            <button class="btn btn-install" id="install-button">Установить как приложение</button>
+            
+            <button class="btn btn-skip" id="skip-button" style="display: none;">Перейти на сайт</button>
         </div>
     </div>
 
-    <!-- Фрейм для разворачивания основного сайта -->
-    <iframe id="main-app" allow="geolocation; microphone; camera; midi; encrypted-media;" allowfullscreen></iframe>
-
     <script>
-        // Регистрация сервис-воркера для полноценного PWA режима
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('Сервис-воркер успешно запущен'))
-                    .catch(err => console.error('Ошибка воркера:', err));
-            });
-        }
-
         document.addEventListener("DOMContentLoaded", () => {
             const statusText = document.getElementById('status');
-            const loaderScreen = document.getElementById('loader-screen');
-            const iframe = document.getElementById('main-app');
             const installBtn = document.getElementById('install-button');
-            const loaderSpinner = document.getElementById('main-loader');
+            const skipBtn = document.getElementById('skip-button');
+            const loader = document.getElementById('main-loader');
             
             let deferredPrompt;
+            let savedUrl = '';
 
-            // Проверяем, запущено ли уже как установленное приложение (standalone)
-            const isRunningStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            // 1. Сразу запрашиваем ссылку из link.txt
+            fetch('link.txt')
+                .then(response => {
+                    if (!response.ok) throw new Error();
+                    return response.text();
+                })
+                .then(url => {
+                    savedUrl = url.trim();
+                    if (savedUrl) {
+                        statusText.innerText = "Ссылка готова";
+                        skipBtn.style.display = 'block'; // Показываем кнопку "Пропустить"
+                        
+                        // Автоматический редирект через 1.5 секунды, если пользователь никуда не нажал
+                        setTimeout(() => {
+                            if (!deferredPrompt) {
+                                window.location.href = savedUrl;
+                            }
+                        }, 1500);
+                    } else {
+                        statusText.innerText = "Ошибка: Файл конфигурации пуст";
+                        loader.style.display = 'none';
+                    }
+                })
+                .catch(() => {
+                    statusText.innerText = "Ошибка сети";
+                    loader.style.display = 'none';
+                });
 
-            // Отлавливаем системное событие установки PWA
+            // 2. Ловим событие установки (работает в Chrome на Android/ПК)
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
-                
-                // Если открыто просто в браузере — показываем кнопку установки вместо крутилки
-                if (!isRunningStandalone) {
-                    loaderSpinner.style.display = 'none';
-                    statusText.innerText = "Установите приложение для быстрого доступа без строк браузера";
-                    installBtn.style.display = 'block';
-                }
+                installBtn.style.display = 'block';
+                statusText.innerText = "Доступно для установки";
             });
 
-            // Обработка клика по кнопке "Установить"
+            // Клик по кнопке установки
             installBtn.addEventListener('click', async () => {
                 if (!deferredPrompt) return;
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
                 if (outcome === 'accepted') {
                     installBtn.style.display = 'none';
-                    loaderSpinner.style.display = 'block';
-                    statusText.innerText = "Установка завершена. Запуск...";
-                    loadMainSite();
                 }
                 deferredPrompt = null;
             });
 
-            // Если приложение уже установлено или запущено с главного экрана
-            window.addEventListener('appinstalled', () => {
-                installBtn.style.display = 'none';
-                loaderSpinner.style.display = 'block';
-                loadMainSite();
+            // Клик по кнопке "Пропустить / Перейти"
+            skipBtn.addEventListener('click', () => {
+                if (savedUrl) {
+                    window.location.href = savedUrl;
+                }
             });
-
-            // Основная функция загрузки ссылки
-            function loadMainSite() {
-                statusText.innerText = "Соединение с сервером...";
-                
-                fetch('link.txt')
-                    .then(response => {
-                        if (!response.ok) throw new Error('Файл ссылки недоступен');
-                        return response.text();
-                    })
-                    .then(url => {
-                        const targetUrl = url.trim();
-                        if (targetUrl) {
-                            iframe.src = targetUrl;
-
-                            // Скрываем экран загрузки только тогда, когда сайт внутри фрейма полностью прогрузился
-                            iframe.onload = () => {
-                                iframe.style.display = "block";
-                                loaderScreen.style.opacity = "0";
-                                setTimeout(() => {
-                                    loaderScreen.style.display = "none";
-                                }, 500);
-                            };
-                        } else {
-                            statusText.innerText = "Ошибка: Ссылка в файле конфигурации отсутствует.";
-                        }
-                    })
-                    .catch(error => {
-                        console.error(error);
-                        statusText.innerText = "Ошибка сети. Проверьте подключение.";
-                        loaderSpinner.style.display = 'none';
-                    });
-            }
-
-            // Если запущено как PWA (нет строки браузера), запускаем сайт мгновенно без пауз
-            if (isRunningStandalone) {
-                loadMainSite();
-            } else {
-                // Если это обычный браузер, даем 1.5 секунды на ловлю промиса установки, если нет — грузим сайт
-                setTimeout(() => {
-                    if (!deferredPrompt) {
-                        loadMainSite();
-                    }
-                }, 1500);
-            }
         });
     </script>
 
